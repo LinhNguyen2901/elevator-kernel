@@ -22,7 +22,6 @@ int issue_request(int start_floor, int destination_floor, int type);            
 int stop_elevator(void);                                                            // stops the elevator
 
 static struct proc_dir_entry* proc_entry;
-static int waiting;
 
 struct elevator *ele = NULL;
 struct floor *floors;
@@ -48,7 +47,7 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
         format_floor(ele->current_floor, &floors[i], buf, &len);
 
     len += sprintf(buf + len, "\nNumber of passengers: %d \n", ele->pet_count);
-    len += sprintf(buf + len, "Number of passengers waiting: %d \n", waiting);
+    len += sprintf(buf + len, "Number of passengers waiting: %d \n", get_waiting(floors));
     len += sprintf(buf + len, "Number of passengers serviced: %d \n", ele->serviced);
 
     mutex_unlock(&ele->lock);
@@ -79,7 +78,6 @@ int issue_request(int start_floor, int destination_floor, int type) {
 
     mutex_lock(&ele->lock);
     add_pet_to_floor(p, &floors[start_floor - 1]);
-    waiting++;
     mutex_unlock(&ele->lock);
     return 0;
 }
@@ -91,7 +89,6 @@ int stop_elevator(void) {
 
 static int __init elevator_init(void)
 {
-    waiting = 0;    
     ele = elevator_create();
     if (!ele) {
         return -ENOMEM;

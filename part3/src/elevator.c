@@ -33,34 +33,24 @@ void elevator_destroy(struct elevator *e) {
 static int elevator_thread(void *data)
 {
     while (!kthread_should_stop()) {
-        if (mutex_lock_interruptible(&ele->lock) == 0) {
-            enum State current_state = ele->state;
-
+        if (ele->state != OFFLINE && mutex_lock_interruptible(&ele->lock) == 0) {
             // stopping and no pets left on board -> go OFFLINE
             if (ele->stopping && ele->pet_count == 0) {
                 ele->state = OFFLINE;
                 ele->stopping = 0;
-                current_state = OFFLINE;
+                mutex_unlock(&ele->lock);
+                continue;
             }
 
-            if (current_state == IDLE) {
-                // Find where to go next
-                ele->state = elevator_scan(ele, current_state);
-            } 
-            else if (current_state == UP || current_state == DOWN) {
-                // 1. Service the CURRENT floor first (unload people getting off here, load people going our way)
-                elevator_unload(ele, &floors[ele->current_floor]);
-                if (!ele->stopping)
-                    elevator_load(ele, &floors[ele->current_floor], current_state);
+            elevator_unload(ele, &floors[ele->current_floor]);
+            ele->state = elevator_scan(ele, ele->state);
+            if (!ele->stopping)
+                elevator_load(ele, &floors[ele->current_floor], ele->state);
 
-                // 2. Decide if we keep going this direction, switch, or go IDLE
-                ele->state = elevator_scan(ele, current_state);
-
-                // 3. If we are still moving, take a step to the next floor
-                if (ele->state == UP || ele->state == DOWN) {
-                    elevator_move_floor(ele, ele->state);
-                }
+            if (ele->state == UP || ele->state == DOWN) {
+                elevator_move_floor(ele, ele->state);
             }
+            
             mutex_unlock(&ele->lock);
         }
 
@@ -130,8 +120,9 @@ void elevator_load(struct elevator *ele, struct floor *f, enum State cur){
     list_for_each_safe(temp, dummy, &f->list) {
         if (MAX_WEIGHT - ele->current_weight < 3) break;
         item = list_entry(temp, struct pet, list);
-        if (((cur == UP && item->destination_floor > ele->current_floor) ||
-            (cur == DOWN && item->destination_floor < ele->current_floor)) &&
+        if ((ele->current_floor == NUM_FLOOR - 1 || ele->current_floor == 0 ||
+            (cur == UP && item->destination_floor > ele->current_floor) ||
+            (cur == DOWN && item->destination_floor < ele->current_floor) || cur == IDLE) &&
             ele->current_weight + item->weight <= MAX_WEIGHT && ele->pet_count < MAX_PASSENGERS) {
             
             list_del(temp);
@@ -202,6 +193,11 @@ enum State elevator_scan(struct elevator *ele, enum State cur){
     }
     
     if (cur == IDLE) {
+        if (has_destination_above(&ele->passengers, ele->current_floor))
+            return UP;
+        if (has_destination_below(&ele->passengers, ele->current_floor))
+            return DOWN;
+
         int target = find_nearest_request(floors, ele->current_floor);
         struct pet *first;
 
@@ -224,17 +220,6 @@ void elevator_thread_kill(void) {
     if (elevator_task) {
         kthread_stop(elevator_task);
         elevator_task = NULL;
-    }
-}
-
-static void free_pet_list(struct list_head *head) {
-    struct list_head *temp, *dummy;
-    struct pet *item;
-
-    list_for_each_safe(temp, dummy, head) {
-        item = list_entry(temp, struct pet, list);
-        list_del(temp);
-        kfree(item);
     }
 }
 
