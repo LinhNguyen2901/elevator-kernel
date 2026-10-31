@@ -91,7 +91,7 @@ int format_floor(int current_floor, struct floor *f, char *buf, int *offset) {
 
 int has_request_above(struct floor *floors, int f){
     for (int i = f + 1; i < NUM_FLOOR; ++i){
-        if (floors[i].size > 0)
+        if (!list_empty(&floors[i].list))
             return true;
     }
     return false;
@@ -99,7 +99,7 @@ int has_request_above(struct floor *floors, int f){
 
 int has_request_below(struct floor *floors, int f){
     for (int i = f - 1; i >= 0; --i){
-        if (floors[i].size > 0)
+        if (!list_empty(&floors[i].list))
             return true;
     }
     return false;
