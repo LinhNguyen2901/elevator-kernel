@@ -1,6 +1,6 @@
 #ifndef PET_H
 #define PET_H
-#define NUM_FLOOR 6
+#define NUM_FLOOR 5
 
 // type:
 // C - Chihuahua: 3 lbs
