@@ -7,7 +7,8 @@
 #include "elevator.h"
 #include "pet.h"
 
-#define SPEED 250
+#define LOAD_DELAY_MS 1000
+#define MOVE_DELAY_MS 2000
 static struct task_struct *elevator_task = NULL;
 
 struct elevator *elevator_create(void) {
@@ -87,9 +88,9 @@ static int elevator_thread(void *data)
         }
         else 
             msleep(1000);
-        if (action == LOAD) msleep(action*SPEED);
+        if (action == LOAD) msleep(LOAD_DELAY_MS);
         else if (action == MOVE){
-            msleep(action*SPEED);
+            msleep(MOVE_DELAY_MS);
             if (mutex_lock_interruptible(&ele->lock) == 0) {
                 if (ele->state == UP || ele->state == DOWN) {
                     elevator_move_floor(ele, ele->state);
