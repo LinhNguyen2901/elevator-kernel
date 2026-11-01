@@ -157,23 +157,29 @@ void elevator_unload(struct elevator *ele, struct floor *f){
     }
 }
 
+static int pet_can_board(struct elevator *ele, struct pet *item, enum State cur){
+    return ele->current_floor == NUM_FLOOR - 1 ||
+        ele->current_floor == 0 ||
+        (cur == UP && item->destination_floor > ele->current_floor) ||
+        (cur == DOWN && item->destination_floor < ele->current_floor) ||
+        cur == IDLE;
+}
+
 void elevator_load(struct elevator *ele, struct floor *f, enum State cur){
-    struct list_head * temp;
-    struct list_head * dummy; struct pet * item;
-    list_for_each_safe(temp, dummy, &f->list) {
-        if (MAX_WEIGHT - ele->current_weight < 3) break;
-        item = list_entry(temp, struct pet, list);
-        if ((ele->current_floor == NUM_FLOOR - 1 || ele->current_floor == 0 ||
-            (cur == UP && item->destination_floor > ele->current_floor) ||
-            (cur == DOWN && item->destination_floor < ele->current_floor) || cur == IDLE) &&
-            ele->current_weight + item->weight <= MAX_WEIGHT && ele->pet_count < MAX_PASSENGERS) {
-            
-            list_del(temp);
-            list_add_tail(&item->list, &ele->passengers);
-            ele->current_weight += item->weight;
-            ele->pet_count++;
-            f->size--;
-        }
+    struct pet *item;
+
+    while (!list_empty(&f->list)) {
+        item = list_first_entry(&f->list, struct pet, list);
+        if (ele->pet_count >= MAX_PASSENGERS ||
+            ele->current_weight + item->weight > MAX_WEIGHT ||
+            !pet_can_board(ele, item, cur))
+            break;
+
+        list_del(&item->list);
+        list_add_tail(&item->list, &ele->passengers);
+        ele->current_weight += item->weight;
+        ele->pet_count++;
+        f->size--;
     }
 }
 
@@ -208,19 +214,14 @@ int has_destination_below(struct list_head *pets, int f){
 }
 
 int has_request_here(struct floor *floor, enum State cur){
-    struct list_head * temp;
-    struct list_head * dummy; struct pet * item;
-    list_for_each_safe(temp, dummy, &floor->list) {
-        if (MAX_WEIGHT - ele->current_weight < 3) break;
-        item = list_entry(temp, struct pet, list);
-        if ((ele->current_floor == NUM_FLOOR - 1 || ele->current_floor == 0 ||
-            (cur == UP && item->destination_floor > ele->current_floor) ||
-            (cur == DOWN && item->destination_floor < ele->current_floor) || cur == IDLE) &&
-            ele->current_weight + item->weight <= MAX_WEIGHT && ele->pet_count < MAX_PASSENGERS) {
-            return true;
-        }
-    }
-    return false;
+    struct pet *item;
+
+    if (list_empty(&floor->list) || ele->pet_count >= MAX_PASSENGERS)
+        return false;
+
+    item = list_first_entry(&floor->list, struct pet, list);
+    return ele->current_weight + item->weight <= MAX_WEIGHT &&
+        pet_can_board(ele, item, cur);
 }
 
 int find_nearest_request(struct floor *floors, int current_floor) {
