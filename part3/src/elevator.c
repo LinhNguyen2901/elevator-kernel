@@ -51,7 +51,6 @@ static int elevator_thread(void *data)
             if (ele->stopping && ele->pet_count == 0) {
                 ele->state = OFFLINE;
                 ele->stopping = 0;
-                mutex_unlock(&ele->lock);
             }
             switch (ele->state){
                 case LOADING:
@@ -97,6 +96,7 @@ static int elevator_thread(void *data)
                 mutex_unlock(&ele->lock);
             }
         }
+        else msleep(SPEED);
     }
     return 0;
 }
