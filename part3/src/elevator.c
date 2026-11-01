@@ -9,6 +9,7 @@
 
 #define LOAD_DELAY_MS 1000
 #define MOVE_DELAY_MS 2000
+#define IDLE_POLL_MS 1000
 static struct task_struct *elevator_task = NULL;
 
 struct elevator *elevator_create(void) {
@@ -52,7 +53,6 @@ static int elevator_thread(void *data)
             if (ele->stopping && ele->pet_count == 0) {
                 ele->state = OFFLINE;
                 ele->stopping = 0;
-                mutex_unlock(&ele->lock);
             }
             switch (ele->state){
                 case LOADING:
@@ -98,6 +98,7 @@ static int elevator_thread(void *data)
                 mutex_unlock(&ele->lock);
             }
         }
+        else msleep(IDLE_POLL_MS);
     }
     return 0;
 }
