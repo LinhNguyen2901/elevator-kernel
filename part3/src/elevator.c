@@ -79,8 +79,11 @@ static int elevator_thread(void *data)
                         prev_state = ele->state;
                         ele->state = LOADING;
                         action = LOAD;
+                    } else {
+                        ele->state = elevator_scan(ele, ele->state);
+                        if (ele->state == UP || ele->state == DOWN)
+                            action = MOVE;
                     }
-                    else action = MOVE;
                 break;
                 case OFFLINE: mutex_unlock(&ele->lock); continue;
             }
