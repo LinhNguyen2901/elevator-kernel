@@ -33,8 +33,13 @@ extern int (*STUB_stop_elevator)(void);
 
 static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
 {
-    char buf[BUF_LEN];
+    char *buf;
     int len = 0;
+    ssize_t ret;
+
+    buf = kmalloc(BUF_LEN, GFP_KERNEL);
+    if (!buf)
+        return -ENOMEM;
 
     mutex_lock(&ele->lock);
     
@@ -55,7 +60,9 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
 
     mutex_unlock(&ele->lock);
 
-    return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+    ret = simple_read_from_buffer(ubuf, count, ppos, buf, len);
+    kfree(buf);
+    return ret;
 }
 
 static const struct proc_ops procfile_fops = {
