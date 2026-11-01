@@ -36,7 +36,6 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
     int len = 0;
     ssize_t ret;
 
-    // too big for the kernel stack -> heap; allocate before taking the lock
     buf = kmalloc(BUF_LEN, GFP_KERNEL);
     if (!buf)
         return -ENOMEM;
