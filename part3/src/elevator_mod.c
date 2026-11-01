@@ -1,4 +1,4 @@
-
+#include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -26,36 +26,42 @@ static struct proc_dir_entry* proc_entry;
 struct elevator *ele = NULL;
 struct floor *floors;
 
-static DEFINE_MUTEX(timer_lock);
 extern int (*STUB_start_elevator)(void);
 extern int (*STUB_issue_request)(int, int, int);
 extern int (*STUB_stop_elevator)(void);
 
 static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
 {
-    char buf[BUF_LEN];
+    char *buf;
     int len = 0;
+    ssize_t ret;
+
+    // too big for the kernel stack -> heap; allocate before taking the lock
+    buf = kmalloc(BUF_LEN, GFP_KERNEL);
+    if (!buf)
+        return -ENOMEM;
 
     mutex_lock(&ele->lock);
     
-    len = sprintf(buf, "Elevator state: %s \n", STATE_NAME[ele->state]);
-    len += sprintf(buf + len, "Current floor: %d \n", ele->current_floor+1);
-    len += sprintf(buf + len, "Current load: %d \n", ele->current_weight);
-    len += sprintf(buf + len, "Elevator status: \n\n");
-    
+    len = sprintf(buf, "Elevator state: %s\n", STATE_NAME[ele->state]);
+    len += sprintf(buf + len, "Current floor: %d\n", ele->current_floor + 1);
+    len += sprintf(buf + len, "Current load: %d lbs\n", ele->current_weight);
+    len += sprintf(buf + len, "Elevator status: ");
+    format_passengers(ele, buf, &len);
+    len += sprintf(buf + len, "\n\n");
+
     for (int i = NUM_FLOOR - 1; i >= 0; i--)
         format_floor(ele->current_floor, &floors[i], buf, &len);
 
-    len += sprintf(buf + len, "\nNumber of passengers: %d \n", ele->pet_count);
-    len += sprintf(buf + len, "Number of passengers waiting: %d \n", get_waiting(floors));
-    len += sprintf(buf + len, "Number of passengers serviced: %d \n", ele->serviced);
-
-    len += sprintf(buf + len, "Passengers: ");
-    format_passengers(ele, buf, &len);
+    len += sprintf(buf + len, "\nNumber of pets: %d\n", ele->pet_count);
+    len += sprintf(buf + len, "Number of pets waiting: %d\n", get_waiting(floors));
+    len += sprintf(buf + len, "Number of pets serviced: %d\n", ele->serviced);
 
     mutex_unlock(&ele->lock);
 
-    return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+    ret = simple_read_from_buffer(ubuf, count, ppos, buf, len);
+    kfree(buf);
+    return ret;
 }
 
 static const struct proc_ops procfile_fops = {
