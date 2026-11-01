@@ -35,6 +35,7 @@ __used __section("__versions") = {
 	{ 0xe4fd88b3, "kthread_stop" },
 	{ 0xc1e6c71e, "__mutex_init" },
 	{ 0x357aaab3, "mutex_lock_interruptible" },
+	{ 0x27683a56, "memset" },
 	{ 0xd272d446, "__x86_return_thunk" },
 	{ 0x70956c7a, "STUB_issue_request" },
 	{ 0x380324b6, "proc_remove" },
@@ -68,6 +69,7 @@ __used __section("__version_ext_crcs") = {
 	0xe4fd88b3,
 	0xc1e6c71e,
 	0x357aaab3,
+	0x27683a56,
 	0xd272d446,
 	0x70956c7a,
 	0x380324b6,
@@ -100,6 +102,7 @@ __used __section("__version_ext_names") =
 	"kthread_stop\0"
 	"__mutex_init\0"
 	"mutex_lock_interruptible\0"
+	"memset\0"
 	"__x86_return_thunk\0"
 	"STUB_issue_request\0"
 	"proc_remove\0"
@@ -117,4 +120,4 @@ __used __section("__version_ext_names") =
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "A9F7C779C59A135F0729FC5");
+MODULE_INFO(srcversion, "5C31AB29D7804EFF64496E5");

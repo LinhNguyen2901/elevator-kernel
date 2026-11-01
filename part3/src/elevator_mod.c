@@ -22,7 +22,6 @@ int issue_request(int start_floor, int destination_floor, int type);            
 int stop_elevator(void);                                                            // stops the elevator
 
 static struct proc_dir_entry* proc_entry;
-static int waiting;
 
 struct elevator *ele = NULL;
 struct floor *floors;
@@ -40,7 +39,7 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
     mutex_lock(&ele->lock);
     
     len = sprintf(buf, "Elevator state: %s \n", STATE_NAME[ele->state]);
-    len += sprintf(buf + len, "Current floor: %d \n", ele->current_floor);
+    len += sprintf(buf + len, "Current floor: %d \n", ele->current_floor+1);
     len += sprintf(buf + len, "Current load: %d \n", ele->current_weight);
     len += sprintf(buf + len, "Elevator status: \n\n");
     
@@ -48,8 +47,11 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
         format_floor(ele->current_floor, &floors[i], buf, &len);
 
     len += sprintf(buf + len, "\nNumber of passengers: %d \n", ele->pet_count);
-    len += sprintf(buf + len, "Number of passengers waiting: %d \n", waiting);
+    len += sprintf(buf + len, "Number of passengers waiting: %d \n", get_waiting(floors));
     len += sprintf(buf + len, "Number of passengers serviced: %d \n", ele->serviced);
+
+    len += sprintf(buf + len, "Passengers: ");
+    format_passengers(ele, buf, &len);
 
     mutex_unlock(&ele->lock);
 
@@ -59,10 +61,6 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
 static const struct proc_ops procfile_fops = {
     .proc_read = elevator_read,
 };
-
-int start_elevator(void) {
-    return 0;
-}
 
 int issue_request(int start_floor, int destination_floor, int type) {
     struct pet *p;
@@ -79,19 +77,12 @@ int issue_request(int start_floor, int destination_floor, int type) {
 
     mutex_lock(&ele->lock);
     add_pet_to_floor(p, &floors[start_floor - 1]);
-    waiting++;
     mutex_unlock(&ele->lock);
-    return 0;
-}
-
-
-int stop_elevator(void) {
     return 0;
 }
 
 static int __init elevator_init(void)
 {
-    waiting = 0;    
     ele = elevator_create();
     if (!ele) {
         return -ENOMEM;

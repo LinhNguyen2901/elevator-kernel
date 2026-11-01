@@ -14,14 +14,24 @@ struct pet *pet_create(int dest, int type){
     return p;
 }
 
+void free_pet_list(struct list_head *head) {
+    struct list_head *temp, *dummy;
+    struct pet *item;
+
+    list_for_each_safe(temp, dummy, head) {
+        item = list_entry(temp, struct pet, list);
+        list_del(temp);
+        kfree(item);
+    }
+}
+
 struct floor *floors_create(int num_floors) {
-    int i;
     struct floor *f_array = kzalloc(sizeof(struct floor) * num_floors, GFP_KERNEL);
     if (!f_array) {
         return NULL;
     }
 
-    for (i = 0; i < num_floors; i++) {
+    for (int i = 0; i < num_floors; i++) {
         f_array[i].number = i;
         f_array[i].size = 0;
         INIT_LIST_HEAD(&f_array[i].list);
@@ -32,7 +42,18 @@ struct floor *floors_create(int num_floors) {
 
 void floors_destroy(struct floor *f_array, int num_floors) {
     if (!f_array) return;
+    for (int i = 0; i < num_floors; i++) {
+        free_pet_list(&f_array[i].list);
+    }
     kfree(f_array);
+}
+
+int get_waiting(struct floor *f_array){
+    int out = 0;
+    for (int i = 0; i < NUM_FLOOR; i++) {
+        out += f_array[i].size;
+    }
+    return out;
 }
 
 void add_pet_to_floor(struct pet* p, struct floor* f){
@@ -70,7 +91,7 @@ int format_floor(int current_floor, struct floor *f, char *buf, int *offset) {
 
 int has_request_above(struct floor *floors, int f){
     for (int i = f + 1; i < NUM_FLOOR; ++i){
-        if (floors[i].size > 0)
+        if (!list_empty(&floors[i].list))
             return true;
     }
     return false;
@@ -78,7 +99,7 @@ int has_request_above(struct floor *floors, int f){
 
 int has_request_below(struct floor *floors, int f){
     for (int i = f - 1; i >= 0; --i){
-        if (floors[i].size > 0)
+        if (!list_empty(&floors[i].list))
             return true;
     }
     return false;

@@ -7,6 +7,7 @@
 #include "elevator.h"
 #include "pet.h"
 
+#define SPEED 250
 static struct task_struct *elevator_task = NULL;
 
 struct elevator *elevator_create(void) {
@@ -30,41 +31,72 @@ void elevator_destroy(struct elevator *e) {
     }
 }
 
+int format_passengers(struct elevator *e, char *buf, int *offset) {
+    struct list_head *temp; 
+    struct pet *item;
+    list_for_each(temp, &e->passengers) {
+        item = list_entry(temp, struct pet, list);
+        *offset += sprintf(buf + *offset, "%c%d ", item->type, item->destination_floor+1);
+    } 
+    return *offset;
+}
+
 static int elevator_thread(void *data)
 {
+    enum State prev_state = OFFLINE;
     while (!kthread_should_stop()) {
-        if (mutex_lock_interruptible(&ele->lock) == 0) {
-            enum State current_state = ele->state;
-
+        enum Action action = NONE;
+        if (ele->state != OFFLINE && mutex_lock_interruptible(&ele->lock) == 0) {
             // stopping and no pets left on board -> go OFFLINE
             if (ele->stopping && ele->pet_count == 0) {
                 ele->state = OFFLINE;
                 ele->stopping = 0;
-                current_state = OFFLINE;
+                mutex_unlock(&ele->lock);
             }
-
-            if (current_state == IDLE) {
-                // Find where to go next
-                ele->state = elevator_scan(ele, current_state);
-            } 
-            else if (current_state == UP || current_state == DOWN) {
-                // 1. Service the CURRENT floor first (unload people getting off here, load people going our way)
-                elevator_unload(ele, &floors[ele->current_floor]);
-                if (!ele->stopping)
-                    elevator_load(ele, &floors[ele->current_floor], current_state);
-
-                // 2. Decide if we keep going this direction, switch, or go IDLE
-                ele->state = elevator_scan(ele, current_state);
-
-                // 3. If we are still moving, take a step to the next floor
-                if (ele->state == UP || ele->state == DOWN) {
-                    elevator_move_floor(ele, ele->state);
-                }
+            switch (ele->state){
+                case LOADING:
+                    elevator_unload(ele, &floors[ele->current_floor]);
+                    ele->state = elevator_scan(ele, prev_state);
+                    if (!ele->stopping)
+                        elevator_load(ele, &floors[ele->current_floor], ele->state);
+                    if (ele->state == UP || ele->state == DOWN)
+                        action = MOVE;
+                break;
+                case IDLE:
+                    if (!ele->stopping && has_request_here(&floors[ele->current_floor], ele->state)) {
+                        prev_state = ele->state;
+                        ele->state = LOADING;
+                        action = LOAD;
+                    } else {
+                        ele->state = elevator_scan(ele, ele->state);
+                        if (ele->state == UP || ele->state == DOWN) 
+                            action = MOVE;
+                    }
+                break;
+                case UP: case DOWN:
+                    if (has_destination_here(&ele->passengers, ele->current_floor) || (!ele->stopping && has_request_here(&floors[ele->current_floor], ele->state))) {
+                        prev_state = ele->state;
+                        ele->state = LOADING;
+                        action = LOAD;
+                    }
+                    else action = MOVE;
+                break;
+                case OFFLINE: mutex_unlock(&ele->lock); continue;
             }
             mutex_unlock(&ele->lock);
         }
-
-        msleep(1000);
+        else 
+            msleep(1000);
+        if (action == LOAD) msleep(action*SPEED);
+        else if (action == MOVE){
+            msleep(action*SPEED);
+            if (mutex_lock_interruptible(&ele->lock) == 0) {
+                if (ele->state == UP || ele->state == DOWN) {
+                    elevator_move_floor(ele, ele->state);
+                }
+                mutex_unlock(&ele->lock);
+            }
+        }
     }
     return 0;
 }
@@ -130,8 +162,9 @@ void elevator_load(struct elevator *ele, struct floor *f, enum State cur){
     list_for_each_safe(temp, dummy, &f->list) {
         if (MAX_WEIGHT - ele->current_weight < 3) break;
         item = list_entry(temp, struct pet, list);
-        if (((cur == UP && item->destination_floor > ele->current_floor) ||
-            (cur == DOWN && item->destination_floor < ele->current_floor)) &&
+        if ((ele->current_floor == NUM_FLOOR - 1 || ele->current_floor == 0 ||
+            (cur == UP && item->destination_floor > ele->current_floor) ||
+            (cur == DOWN && item->destination_floor < ele->current_floor) || cur == IDLE) &&
             ele->current_weight + item->weight <= MAX_WEIGHT && ele->pet_count < MAX_PASSENGERS) {
             
             list_del(temp);
@@ -153,12 +186,38 @@ int has_destination_above(struct list_head *pets, int f){
     return false;
 }
 
+int has_destination_here(struct list_head *pets, int f){
+    struct list_head * temp; struct pet * item;
+    list_for_each(temp, pets) {
+        item = list_entry(temp, struct pet, list);
+        if (item->destination_floor == f)
+            return true;
+    }
+    return false;
+}
+
 int has_destination_below(struct list_head *pets, int f){
     struct list_head * temp; struct pet * item;
     list_for_each(temp, pets) {
         item = list_entry(temp, struct pet, list);
         if (item->destination_floor < f)
             return true;
+    }
+    return false;
+}
+
+int has_request_here(struct floor *floor, enum State cur){
+    struct list_head * temp;
+    struct list_head * dummy; struct pet * item;
+    list_for_each_safe(temp, dummy, &floor->list) {
+        if (MAX_WEIGHT - ele->current_weight < 3) break;
+        item = list_entry(temp, struct pet, list);
+        if ((ele->current_floor == NUM_FLOOR - 1 || ele->current_floor == 0 ||
+            (cur == UP && item->destination_floor > ele->current_floor) ||
+            (cur == DOWN && item->destination_floor < ele->current_floor) || cur == IDLE) &&
+            ele->current_weight + item->weight <= MAX_WEIGHT && ele->pet_count < MAX_PASSENGERS) {
+            return true;
+        }
     }
     return false;
 }
@@ -202,6 +261,11 @@ enum State elevator_scan(struct elevator *ele, enum State cur){
     }
     
     if (cur == IDLE) {
+        if (has_destination_above(&ele->passengers, ele->current_floor))
+            return UP;
+        if (has_destination_below(&ele->passengers, ele->current_floor))
+            return DOWN;
+
         int target = find_nearest_request(floors, ele->current_floor);
         struct pet *first;
 
@@ -224,17 +288,6 @@ void elevator_thread_kill(void) {
     if (elevator_task) {
         kthread_stop(elevator_task);
         elevator_task = NULL;
-    }
-}
-
-static void free_pet_list(struct list_head *head) {
-    struct list_head *temp, *dummy;
-    struct pet *item;
-
-    list_for_each_safe(temp, dummy, head) {
-        item = list_entry(temp, struct pet, list);
-        list_del(temp);
-        kfree(item);
     }
 }
 
